@@ -86,17 +86,19 @@ async fn getutxout(p: FlorestaPlugin, v: serde_json::Value) -> Result<serde_json
     let txid = v.get("txid").expect("lightningd sent an invalid request");
     let vout = v.get("vout").expect("lightningd sent an invalid request");
 
-    let res = rpc_call(&state, "sendrawtransaction", format!("{txid}, {vout}")).await?;
+    let res = rpc_call(&state, "gettxout", format!("{txid}, {vout}")).await?;
     let res = serde_json::from_str::<JsonRpcResult<GetUtxoResult>>(&res)?;
 
-    if let Some(res) = res.result {
-        return Ok(json!({"amount": res.txout.value, "script": res.txout.script_pub_key }));
+    match res.result {
+        Some(res) if res.txout.is_some() => {
+            let res = res.txout.unwrap();
+            Ok(json!({"amount": res.value, "script": res.script_pubkey }))
+        }
+        _ => Ok(json!({
+            "amout": null,
+            "script": null,
+        })),
     }
-    log::error!("{res:?}");
-    Ok(json!({
-        "amout": null,
-        "script": null,
-    }))
 }
 
 /// Publishes a transaction to the chain
@@ -227,13 +229,13 @@ struct JsonRpcResult<Result> {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct GetUtxoResult {
-    txout: TxOut,
+    txout: Option<TxOut>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct TxOut {
-    value: f64,
-    script_pub_key: String,
+    value: u64,
+    script_pubkey: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
