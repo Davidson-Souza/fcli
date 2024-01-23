@@ -83,9 +83,13 @@ async fn main() -> Result<(), Error> {
 async fn getutxout(p: FlorestaPlugin, v: serde_json::Value) -> Result<serde_json::Value, Error> {
     let state = p.state();
 
-    let txid = v.get("txid").expect("lightningd sent an invalid request");
-    let vout = v.get("vout").expect("lightningd sent an invalid request");
+    let input = v.get("txid").zip(v.get("vout"));
 
+    let (txid, vout) = match input {
+        Some((txid, vout)) => (txid, vout),
+        _ => return Err(Error::msg("bad request".to_owned())),
+    };
+    
     let res = rpc_call(&state, "gettxout", format!("{txid}, {vout}")).await?;
     let res = serde_json::from_str::<JsonRpcResult<GetUtxoResult>>(&res)?;
 
@@ -107,7 +111,10 @@ async fn send_raw_transaction(
     v: serde_json::Value,
 ) -> Result<serde_json::Value, Error> {
     let state = p.state();
-    let res = rpc_call(&state, "sendrawtransaction", v.to_string()).await?;
+    let Some(tx) = v.get("tx") else {
+        return Err(Error::msg("bad request".to_owned()));
+    };
+    let res = rpc_call(&state, "sendrawtransaction", tx.to_string()).await?;
     let res: JsonRpcResult<String> = serde_json::from_str(&res)?;
 
     match res.error {
